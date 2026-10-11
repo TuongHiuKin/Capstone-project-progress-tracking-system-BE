@@ -53,7 +53,8 @@ public class NotificationController {
     @Operation(summary = "Number of unread notifications")
     @GetMapping("/unread-count")
     public Map<String, Long> unreadCount(@AuthenticationPrincipal User currentUser) {
-        return Map.of("unread", notificationService.unreadCount(currentUser));
+        long count = notificationService.unreadCount(currentUser);
+        return Map.of("unread", count, "count", count, "unreadCount", count);
     }
 
     @Operation(summary = "Mark a notification as read")

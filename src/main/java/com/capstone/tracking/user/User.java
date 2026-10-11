@@ -15,6 +15,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 
@@ -69,6 +70,12 @@ public class User extends BaseEntity implements UserDetails {
     private String skills;
 
     @Column(length = 500)
+    private String strengths;
+
+    @Column(length = 500)
+    private String weaknesses;
+
+    @Column(length = 500)
     private String ineligibleReason;
 
     /** Campus picked at sign-in (Giai đoạn 1). Null until the first Google sign-in, then pinned. */
@@ -84,6 +91,9 @@ public class User extends BaseEntity implements UserDetails {
     @Column(nullable = false)
     @Builder.Default
     private boolean selfRegistered = false;
+
+    /** Last time the training department's list import (YC03) created or updated this student. */
+    private Instant importedAt;
 
     /** Why an Admin rejected the sign-up; shown to the student when they try to sign in. */
     @Column(length = 500)

@@ -10,7 +10,7 @@ import jakarta.validation.constraints.NotNull;
 public record UserUpdateRequest(
         @NotBlank String fullName,
         String avatarUrl,
-        @NotNull UserStatus status,
+        UserStatus status,
         Role role,
         Campus campus
 ) {

@@ -10,5 +10,17 @@ public enum Role {
     /** Hội đồng: approves topics, sits on the closed council (Review 3) and grades final defenses. */
     COUNCIL,
     GROUP_LEADER,
-    STUDENT
+    STUDENT;
+
+    @com.fasterxml.jackson.annotation.JsonCreator
+    public static Role fromString(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim().toUpperCase();
+        if ("LEADER".equals(normalized)) {
+            return GROUP_LEADER;
+        }
+        return Role.valueOf(normalized);
+    }
 }

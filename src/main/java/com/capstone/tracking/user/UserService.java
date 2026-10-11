@@ -56,7 +56,9 @@ public class UserService {
         User user = getById(id);
         user.setFullName(request.fullName());
         user.setAvatarUrl(request.avatarUrl());
-        user.setStatus(request.status());
+        if (request.status() != null) {
+            user.setStatus(request.status());
+        }
         if (request.role() != null) {
             user.setRole(request.role());
         }

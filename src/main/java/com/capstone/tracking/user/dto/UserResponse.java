@@ -23,11 +23,23 @@ public record UserResponse(
         String skills,
         String studentCode,
         boolean selfRegistered,
-        String rejectionReason
+        String rejectionReason,
+        Instant importedAt,
+        String strengths,
+        String weaknesses
 ) {
     public static UserResponse from(User u) {
         return new UserResponse(u.getId(), u.getEmail(), u.getFullName(), u.getRole(), u.getStatus(), u.getAvatarUrl(), u.getCampus(), u.getCreatedAt(),
                 u.isEligible(), u.getIneligibleReason(), u.getBio(), u.getSkills(),
-                u.getStudentCode(), u.isSelfRegistered(), u.getRejectionReason());
+                u.getStudentCode(), u.isSelfRegistered(), u.getRejectionReason(), u.getImportedAt(),
+                u.getStrengths(), u.getWeaknesses());
+    }
+
+    public UserResponse(UUID id, String email, String fullName, Role role, UserStatus status, String avatarUrl,
+                        Campus campus, Instant createdAt, boolean eligible, String ineligibleReason,
+                        String bio, String skills, String studentCode, boolean selfRegistered,
+                        String rejectionReason, Instant importedAt) {
+        this(id, email, fullName, role, status, avatarUrl, campus, createdAt, eligible, ineligibleReason,
+                bio, skills, studentCode, selfRegistered, rejectionReason, importedAt, null, null);
     }
 }

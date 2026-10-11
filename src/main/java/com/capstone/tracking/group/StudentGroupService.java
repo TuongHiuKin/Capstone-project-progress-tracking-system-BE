@@ -5,8 +5,11 @@ import com.capstone.tracking.common.exception.ConflictException;
 import com.capstone.tracking.common.exception.ResourceNotFoundException;
 import com.capstone.tracking.eligibility.EligibilityService;
 import com.capstone.tracking.group.dto.AddMemberRequest;
+import com.capstone.tracking.group.dto.GroupMemberResponse;
 import com.capstone.tracking.group.dto.StudentGroupCreateRequest;
+import com.capstone.tracking.group.dto.StudentGroupResponse;
 import com.capstone.tracking.group.dto.StudentGroupUpdateRequest;
+import org.springframework.data.domain.PageRequest;
 import com.capstone.tracking.notification.DomainEvent;
 import com.capstone.tracking.notification.DomainEventType;
 import com.capstone.tracking.topic.Topic;
@@ -130,6 +133,22 @@ public class StudentGroupService {
         return studentGroupRepository.lockById(id).orElseThrow(() -> ResourceNotFoundException.of("StudentGroup", id));
     }
 
+    @Transactional(readOnly = true)
+    public Optional<StudentGroup> findMyActiveGroup(UUID userId) {
+        Page<StudentGroup> page = studentGroupRepository.findForMember(userId, PageRequest.of(0, 1));
+        return page.isEmpty() ? Optional.empty() : Optional.of(page.getContent().get(0));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<StudentGroupResponse> findMyActiveGroupResponse(UUID userId) {
+        return findMyActiveGroup(userId).map(group -> {
+            List<GroupMemberResponse> members = listActiveMembers(group.getId()).stream()
+                    .map(GroupMemberResponse::from)
+                    .toList();
+            return StudentGroupResponse.from(group, members.size(), members);
+        });
+    }
+
     public long countActiveMembers(UUID groupId) {
         return groupMemberRepository.countByGroupIdAndStatus(groupId, MemberStatus.ACTIVE);
     }
@@ -184,7 +203,15 @@ public class StudentGroupService {
         if (request.supervisorId() != null) {
             group.setSupervisor(requireRole(request.supervisorId(), Role.INSTRUCTOR, Role.ADMIN));
         }
-        group.setStatus(request.status());
+        if (request.status() != null) {
+            group.setStatus(request.status());
+        }
+        if (request.leaderUserId() != null) {
+            if (actingUser != null && actingUser.getRole() != Role.ADMIN) {
+                throw new AccessDeniedException("Only an administrator can replace the group leader");
+            }
+            replaceLeader(id, request.leaderUserId());
+        }
         return group;
     }
 
@@ -211,6 +238,18 @@ public class StudentGroupService {
         }
         eligibilityService.requireEligible(user);
         boolean isLeader = (actingUser == null || actingUser.getRole() == Role.ADMIN) && request.isLeader();
+        if (isLeader) {
+            // Admin "add as leader": a current member is simply promoted, and an existing leader is replaced instead
+            // of blocking the request with "already has an active leader".
+            if (groupMemberRepository.existsByGroupIdAndUserIdAndIsLeaderTrueAndStatus(groupId, user.getId(), MemberStatus.ACTIVE)) {
+                throw new ConflictException("This student is already the leader of this group");
+            }
+            if (groupMemberRepository.existsByGroupIdAndUserIdAndStatus(groupId, user.getId(), MemberStatus.ACTIVE)) {
+                return replaceLeader(groupId, user.getId());
+            }
+            enroll(group, user, false, NO_REQUEST);
+            return replaceLeader(groupId, user.getId());
+        }
         return enroll(group, user, isLeader, NO_REQUEST);
     }
 
@@ -373,20 +412,41 @@ public class StudentGroupService {
             boolean wasLeader = member.isLeader();
             deactivate(group, member);
             if (wasLeader) {
-                groupMemberRepository.findByGroupIdAndStatus(group.getId(), MemberStatus.ACTIVE).stream()
-                        .filter(m -> !m.getId().equals(member.getId()))
-                        .min(Comparator.comparing(GroupMember::getJoinedAt,
-                                Comparator.nullsLast(Comparator.naturalOrder())))
-                        .ifPresent(next -> {
-                            next.setLeader(true);
-                            next.getUser().setRole(Role.GROUP_LEADER);
-                        });
+                promoteSuccessorIfLeaderless(group.getId());
             }
             events.publishEvent(DomainEvent.of(DomainEventType.MEMBER_REMOVED, group.getId(), member.getId(), null,
                             member.getUser().getFullName())
                     .withDetails("Chưa đủ điều kiện làm Capstone" + (reason == null || reason.isBlank() ? "" : ": " + reason), null)
                     .withTarget(userId));
         }
+    }
+
+    /**
+     * YC20: Admin replaces the leader, naming the new one by user id, membership id, MSSV or e-mail. A {@code userId}
+     * that is in fact a membership id (the {@code id} of the member list) is accepted too.
+     */
+    @Transactional
+    public GroupMember replaceLeader(UUID groupId, UUID userId, UUID memberId, String studentCode, String email,
+                                     String identifier) {
+        UUID target = null;
+        for (UUID candidate : new UUID[] {memberId, userId}) {
+            if (target == null && candidate != null) {
+                target = groupMemberRepository.findById(candidate)
+                        .filter(m -> m.getGroup().getId().equals(groupId))
+                        .map(m -> m.getUser().getId())
+                        .orElse(null);
+            }
+        }
+        if (target == null && userId != null) {
+            target = userId;
+        }
+        if (target == null) {
+            if (memberId != null && studentCode == null && email == null && identifier == null) {
+                throw new BadRequestException("The new leader must be an active member of the group");
+            }
+            target = resolveStudent(null, email, identifier, studentCode).getId();
+        }
+        return replaceLeader(groupId, target);
     }
 
     /** YC20: Admin replaces (or assigns) the leader on behalf of the supervisor's report. */
@@ -407,6 +467,26 @@ public class StudentGroupService {
         next.setLeader(true);
         next.getUser().setRole(Role.GROUP_LEADER);
         invalidateRoster(group);
+        events.publishEvent(DomainEvent.of(DomainEventType.LEADER_CHANGED, groupId, next.getId(), null,
+                next.getUser().getFullName()));
+        return next;
+    }
+
+    /** A group whose leader left: the earliest-joined remaining member takes over. Nothing happens when it is empty. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<GroupMember> promoteSuccessorIfLeaderless(UUID groupId) {
+        List<GroupMember> active = groupMemberRepository.findByGroupIdAndStatus(groupId, MemberStatus.ACTIVE);
+        if (active.stream().anyMatch(GroupMember::isLeader)) {
+            return Optional.empty();
+        }
+        Optional<GroupMember> next = active.stream()
+                .min(Comparator.comparing(GroupMember::getJoinedAt, Comparator.nullsLast(Comparator.naturalOrder())));
+        next.ifPresent(m -> {
+            m.setLeader(true);
+            m.getUser().setRole(Role.GROUP_LEADER);
+            events.publishEvent(DomainEvent.of(DomainEventType.LEADER_CHANGED, groupId, m.getId(), null,
+                    m.getUser().getFullName()));
+        });
         return next;
     }
 
@@ -527,11 +607,26 @@ public class StudentGroupService {
         }
     }
 
-    /** Students and leaders may only see their own group; staff (Instructor, Council, Admin) see every group. */
+    /**
+     * Students and leaders may see their own group. Students without a group may also view any group still recruiting.
+     * Staff (Instructor, Council, Admin) see every group.
+     */
     public void requireCanView(UUID groupId, User actingUser) {
-        if ((actingUser.getRole() == Role.STUDENT || actingUser.getRole() == Role.GROUP_LEADER)
-                && !groupMemberRepository.existsByGroupIdAndUserIdAndStatus(groupId, actingUser.getId(), MemberStatus.ACTIVE)) {
-            throw new AccessDeniedException("You are not an active member of this group");
+        if (actingUser.getRole() == Role.STUDENT || actingUser.getRole() == Role.GROUP_LEADER) {
+            boolean isMember = groupMemberRepository.existsByGroupIdAndUserIdAndStatus(groupId, actingUser.getId(), MemberStatus.ACTIVE);
+            if (!isMember) {
+                boolean hasActiveGroup = groupMemberRepository.existsByUserIdAndStatus(actingUser.getId(), MemberStatus.ACTIVE);
+                if (hasActiveGroup) {
+                    throw new AccessDeniedException("You are not an active member of this group");
+                }
+                StudentGroup group = getById(groupId);
+                boolean isRecruiting = !group.isLocked()
+                        && (group.getStatus() == GroupStatus.FORMED || group.getStatus() == GroupStatus.ACTIVE)
+                        && countActiveMembers(groupId) < MAX_MEMBERS;
+                if (!isRecruiting) {
+                    throw new AccessDeniedException("You are not an active member of this group");
+                }
+            }
         }
     }
 
