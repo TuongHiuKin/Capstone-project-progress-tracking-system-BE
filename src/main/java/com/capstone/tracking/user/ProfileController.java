@@ -21,7 +21,12 @@ public class ProfileController {
 
     private final UserRepository userRepository;
 
-    public record ProfileRequest(@Size(max = 1000) String bio, @Size(max = 500) String skills) {}
+    public record ProfileRequest(
+            @Size(max = 1000) String bio,
+            @Size(max = 500) String skills,
+            @Size(max = 500) String strengths,
+            @Size(max = 500) String weaknesses
+    ) {}
 
     @Operation(summary = "Get my recruiting profile")
     @GetMapping
@@ -36,6 +41,8 @@ public class ProfileController {
         User user = userRepository.findById(currentUser.getId()).orElseThrow();
         user.setBio(request.bio() == null || request.bio().isBlank() ? null : request.bio().trim());
         user.setSkills(request.skills() == null || request.skills().isBlank() ? null : request.skills().trim());
+        user.setStrengths(request.strengths() == null || request.strengths().isBlank() ? null : request.strengths().trim());
+        user.setWeaknesses(request.weaknesses() == null || request.weaknesses().isBlank() ? null : request.weaknesses().trim());
         return UserResponse.from(user);
     }
 }

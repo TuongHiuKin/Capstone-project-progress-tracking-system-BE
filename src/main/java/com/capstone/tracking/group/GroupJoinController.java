@@ -9,6 +9,8 @@ import com.capstone.tracking.group.dto.JoinRequestResponse;
 import com.capstone.tracking.group.dto.LeaveRequestBody;
 import com.capstone.tracking.group.dto.LeaveRequestResponse;
 import com.capstone.tracking.group.dto.RejectApplicationRequest;
+import com.capstone.tracking.group.dto.RejectLeaveRequest;
+import com.capstone.tracking.group.dto.StudentGroupResponse;
 import com.capstone.tracking.group.dto.VoteRequest;
 import com.capstone.tracking.group.dto.VoteResponse;
 import com.capstone.tracking.user.User;
@@ -48,6 +50,7 @@ public class GroupJoinController {
     private final GroupJoinService joinService;
     private final GroupLeaveService leaveService;
     private final FormationWindow formationWindow;
+    private final StudentGroupService studentGroupService;
 
     public record TtlRequest(@NotNull Integer ttlHours) {}
 
@@ -91,6 +94,14 @@ public class GroupJoinController {
     @GetMapping("/me/invites")
     public List<JoinRequestResponse> myInvites(@AuthenticationPrincipal User currentUser) {
         return joinService.listMine(JoinRequestType.INVITE, currentUser);
+    }
+
+    @Operation(summary = "My group")
+    @GetMapping("/me/group")
+    public ResponseEntity<StudentGroupResponse> myGroup(@AuthenticationPrincipal User currentUser) {
+        return studentGroupService.findMyActiveGroupResponse(currentUser.getId())
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     // ------------------------------------------------------------------ Apply (group side)
@@ -207,8 +218,11 @@ public class GroupJoinController {
     @Operation(summary = "Reject a leave request")
     @PostMapping("/leave-requests/{id}/reject")
     @PreAuthorize(LEADER_OR_ADMIN)
-    public LeaveRequestResponse rejectLeave(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
-        return LeaveRequestResponse.from(leaveService.reject(id, currentUser));
+    public LeaveRequestResponse rejectLeave(@PathVariable UUID id,
+                                            @RequestBody(required = false) RejectLeaveRequest body,
+                                            @AuthenticationPrincipal User currentUser) {
+        String reason = body != null ? body.reason() : null;
+        return LeaveRequestResponse.from(leaveService.reject(id, currentUser, reason));
     }
 
     /** Admin inbox: the Leaders' requests to leave come here (leaderOnly=true), together with any other request. */

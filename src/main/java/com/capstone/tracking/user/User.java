@@ -70,6 +70,12 @@ public class User extends BaseEntity implements UserDetails {
     private String skills;
 
     @Column(length = 500)
+    private String strengths;
+
+    @Column(length = 500)
+    private String weaknesses;
+
+    @Column(length = 500)
     private String ineligibleReason;
 
     /** Campus picked at sign-in (Giai đoạn 1). Null until the first Google sign-in, then pinned. */

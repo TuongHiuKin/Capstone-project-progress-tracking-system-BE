@@ -81,6 +81,14 @@ public class StudentGroupController {
         return page.map(g -> StudentGroupResponse.from(g, counts.getOrDefault(g.getId(), 0L)));
     }
 
+    @Operation(summary = "Get current user's active group")
+    @GetMapping("/mine")
+    public ResponseEntity<StudentGroupResponse> getMyGroup(@AuthenticationPrincipal User currentUser) {
+        return studentGroupService.findMyActiveGroupResponse(currentUser.getId())
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
     @Operation(summary = "Get a group with its active members")
     @GetMapping("/{id}")
     public StudentGroupResponse getById(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {

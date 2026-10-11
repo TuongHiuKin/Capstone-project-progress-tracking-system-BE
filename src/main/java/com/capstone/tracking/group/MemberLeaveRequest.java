@@ -49,6 +49,9 @@ public class MemberLeaveRequest extends BaseEntity {
 
     private Instant decidedAt;
 
+    @Column(name = "reject_reason", length = 1000)
+    private String rejectReason;
+
     /** Sent by the group's Leader: it goes to the Admins, who decide it and settle who leads next. */
     @Column(name = "leader_request", nullable = false)
     @Builder.Default

@@ -5,8 +5,11 @@ import com.capstone.tracking.common.exception.ConflictException;
 import com.capstone.tracking.common.exception.ResourceNotFoundException;
 import com.capstone.tracking.eligibility.EligibilityService;
 import com.capstone.tracking.group.dto.AddMemberRequest;
+import com.capstone.tracking.group.dto.GroupMemberResponse;
 import com.capstone.tracking.group.dto.StudentGroupCreateRequest;
+import com.capstone.tracking.group.dto.StudentGroupResponse;
 import com.capstone.tracking.group.dto.StudentGroupUpdateRequest;
+import org.springframework.data.domain.PageRequest;
 import com.capstone.tracking.notification.DomainEvent;
 import com.capstone.tracking.notification.DomainEventType;
 import com.capstone.tracking.topic.Topic;
@@ -128,6 +131,22 @@ public class StudentGroupService {
     @Transactional(propagation = Propagation.MANDATORY)
     public StudentGroup lockById(UUID id) {
         return studentGroupRepository.lockById(id).orElseThrow(() -> ResourceNotFoundException.of("StudentGroup", id));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<StudentGroup> findMyActiveGroup(UUID userId) {
+        Page<StudentGroup> page = studentGroupRepository.findForMember(userId, PageRequest.of(0, 1));
+        return page.isEmpty() ? Optional.empty() : Optional.of(page.getContent().get(0));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<StudentGroupResponse> findMyActiveGroupResponse(UUID userId) {
+        return findMyActiveGroup(userId).map(group -> {
+            List<GroupMemberResponse> members = listActiveMembers(group.getId()).stream()
+                    .map(GroupMemberResponse::from)
+                    .toList();
+            return StudentGroupResponse.from(group, members.size(), members);
+        });
     }
 
     public long countActiveMembers(UUID groupId) {
@@ -588,11 +607,26 @@ public class StudentGroupService {
         }
     }
 
-    /** Students and leaders may only see their own group; staff (Instructor, Council, Admin) see every group. */
+    /**
+     * Students and leaders may see their own group. Students without a group may also view any group still recruiting.
+     * Staff (Instructor, Council, Admin) see every group.
+     */
     public void requireCanView(UUID groupId, User actingUser) {
-        if ((actingUser.getRole() == Role.STUDENT || actingUser.getRole() == Role.GROUP_LEADER)
-                && !groupMemberRepository.existsByGroupIdAndUserIdAndStatus(groupId, actingUser.getId(), MemberStatus.ACTIVE)) {
-            throw new AccessDeniedException("You are not an active member of this group");
+        if (actingUser.getRole() == Role.STUDENT || actingUser.getRole() == Role.GROUP_LEADER) {
+            boolean isMember = groupMemberRepository.existsByGroupIdAndUserIdAndStatus(groupId, actingUser.getId(), MemberStatus.ACTIVE);
+            if (!isMember) {
+                boolean hasActiveGroup = groupMemberRepository.existsByUserIdAndStatus(actingUser.getId(), MemberStatus.ACTIVE);
+                if (hasActiveGroup) {
+                    throw new AccessDeniedException("You are not an active member of this group");
+                }
+                StudentGroup group = getById(groupId);
+                boolean isRecruiting = !group.isLocked()
+                        && (group.getStatus() == GroupStatus.FORMED || group.getStatus() == GroupStatus.ACTIVE)
+                        && countActiveMembers(groupId) < MAX_MEMBERS;
+                if (!isRecruiting) {
+                    throw new AccessDeniedException("You are not an active member of this group");
+                }
+            }
         }
     }
 

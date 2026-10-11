@@ -116,11 +116,20 @@ public class GroupLeaveService {
 
     @Transactional
     public MemberLeaveRequest reject(UUID id, User actor) {
+        return reject(id, actor, null);
+    }
+
+    @Transactional
+    public MemberLeaveRequest reject(UUID id, User actor, String reason) {
         MemberLeaveRequest request = lock(id);
         requireDecider(request, actor);
         requirePending(request);
+        if (reason != null && !reason.isBlank()) {
+            request.setRejectReason(reason.trim());
+        }
+        String note = (reason == null || reason.isBlank()) ? "bị từ chối" : "bị từ chối: " + reason.trim();
         events.publishEvent(DomainEvent.of(DomainEventType.LEAVE_DECIDED, request.getGroup().getId(), request.getId(),
-                actor.getId(), "bị từ chối").withTarget(request.getUser().getId()));
+                actor.getId(), note).withTarget(request.getUser().getId()));
         return decide(request, LeaveRequestStatus.REJECTED, actor);
     }
 

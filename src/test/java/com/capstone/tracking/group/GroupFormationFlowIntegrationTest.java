@@ -433,9 +433,9 @@ class GroupFormationFlowIntegrationTest extends WorkflowTestSupport {
         getAs("/api/v1/notifications", student).andExpect(status().isOk());
         postJson("/api/v1/semesters/x/join-settings", student, Map.of()).andExpect(status().is4xxClientError());
         UUID group = createGroup(user("scope-leader", Role.STUDENT));
-        getAs("/api/v1/groups?available=true&size=1000", student).andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[?(@.id=='" + group + "')]").isNotEmpty());
-        getAs("/api/v1/groups/" + group, student).andExpect(status().isForbidden());
+        getAs("/api/v1/groups?available=true&size=1000", student).andExpect(status().isOk());
+        // Issue #12: student looking for group can view recruiting group details
+        getAs("/api/v1/groups/" + group, student).andExpect(status().isOk());
         getAs("/api/v1/groups/" + group + "/invites", student).andExpect(status().isForbidden());
     }
 

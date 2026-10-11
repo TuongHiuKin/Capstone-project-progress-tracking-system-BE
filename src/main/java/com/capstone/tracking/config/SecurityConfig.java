@@ -62,6 +62,7 @@ public class SecurityConfig {
             "/api/v1/notifications/**",
             "/api/v1/groups",
             "/api/v1/groups/*",
+            "/api/v1/groups/*/members",
             "/api/v1/groups/*/applications",
             "/api/v1/groups/*/invites",
             "/api/v1/groups/*/leave-requests",
