@@ -280,6 +280,7 @@ public class StudentGroupService {
 
         if (leader) {
             user.setRole(Role.GROUP_LEADER);
+            userRepository.save(user);
         }
         GroupMember member = groupMemberRepository.findByGroupIdAndUserId(group.getId(), user.getId())
                 .orElseGet(() -> GroupMember.builder().group(group).user(user).build());
@@ -466,6 +467,7 @@ public class StudentGroupService {
         }
         next.setLeader(true);
         next.getUser().setRole(Role.GROUP_LEADER);
+        userRepository.save(next.getUser());
         invalidateRoster(group);
         events.publishEvent(DomainEvent.of(DomainEventType.LEADER_CHANGED, groupId, next.getId(), null,
                 next.getUser().getFullName()));
@@ -494,6 +496,10 @@ public class StudentGroupService {
     @Transactional
     public StudentGroup setLocked(UUID groupId, boolean locked) {
         StudentGroup group = lockById(groupId);
+        if (group.getStatus() == GroupStatus.COMPLETED || group.getStatus() == GroupStatus.FAILED
+                || group.getStatus() == GroupStatus.ARCHIVED) {
+            throw new ConflictException("Cannot change lock on a group that is " + group.getStatus().name().toLowerCase());
+        }
         group.setLocked(locked);
         group.setLockedByAdmin(locked);
         return group;
@@ -510,11 +516,19 @@ public class StudentGroupService {
         }
         requireGroupLeader(groupId, actingUser);
         StudentGroup group = lockById(groupId);
+        if (group.getStatus() == GroupStatus.COMPLETED || group.getStatus() == GroupStatus.FAILED
+                || group.getStatus() == GroupStatus.ARCHIVED) {
+            throw new ConflictException("Cannot change lock on a group that is " + group.getStatus().name().toLowerCase());
+        }
         if (!locked && group.isLocked() && group.isLockedByAdmin()) {
             throw new AccessDeniedException("This roster was locked by an administrator; only an administrator can unlock it");
         }
         group.setLocked(locked);
         group.setLockedByAdmin(false);
+        if (actingUser.getRole() == Role.STUDENT) {
+            actingUser.setRole(Role.GROUP_LEADER);
+            userRepository.save(actingUser);
+        }
         return group;
     }
 
@@ -571,6 +585,7 @@ public class StudentGroupService {
         if (user.getRole() == Role.GROUP_LEADER
                 && !groupMemberRepository.existsByUserIdAndIsLeaderTrueAndStatus(user.getId(), MemberStatus.ACTIVE)) {
             user.setRole(Role.STUDENT);
+            userRepository.save(user);
         }
     }
 

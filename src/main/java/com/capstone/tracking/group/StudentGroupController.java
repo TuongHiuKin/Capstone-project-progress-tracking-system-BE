@@ -156,14 +156,14 @@ public class StudentGroupController {
      */
     @Operation(summary = "Lock the group roster (Admin or the group's Leader)")
     @PostMapping("/{id}/lock")
-    @PreAuthorize("hasAnyRole('ADMIN','GROUP_LEADER')")
+    @PreAuthorize("hasAnyRole('ADMIN','GROUP_LEADER','STUDENT')")
     public StudentGroupResponse lock(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
         return respond(studentGroupService.setLocked(id, true, currentUser));
     }
 
     @Operation(summary = "Unlock the group roster (Admin, or the Leader when they locked it)")
     @PostMapping("/{id}/unlock")
-    @PreAuthorize("hasAnyRole('ADMIN','GROUP_LEADER')")
+    @PreAuthorize("hasAnyRole('ADMIN','GROUP_LEADER','STUDENT')")
     public StudentGroupResponse unlock(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
         return respond(studentGroupService.setLocked(id, false, currentUser));
     }
@@ -171,7 +171,7 @@ public class StudentGroupController {
     /** YC16: the Leader sends the member list to the supervisor (or to the Admins while none is assigned). */
     @Operation(summary = "Leader submits the roster to the supervisor")
     @PostMapping("/{id}/roster/submit")
-    @PreAuthorize("hasRole('GROUP_LEADER')")
+    @PreAuthorize("hasAnyRole('ADMIN','GROUP_LEADER','STUDENT')")
     public StudentGroupResponse submitRoster(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
         return respond(studentGroupService.submitRoster(id, currentUser));
     }
