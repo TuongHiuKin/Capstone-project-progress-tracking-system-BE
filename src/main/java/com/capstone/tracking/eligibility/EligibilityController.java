@@ -91,11 +91,12 @@ public class EligibilityController {
         return eligibilityService.listImported(eligible, q, pageable).map(UserResponse::from);
     }
 
-    @Operation(summary = "Mark a student eligible or not eligible")
-    @PutMapping("/{userId}")
+    /** {@code studentRef} is the student's MSSV (e.g. SE160377); the account UUID is still accepted. */
+    @Operation(summary = "Mark a student eligible or not eligible (by MSSV or user id)")
+    @PutMapping("/{studentRef}")
     @PreAuthorize("hasRole('ADMIN')")
-    public UserResponse setEligibility(@PathVariable UUID userId, @Valid @RequestBody FlagRequest request) {
-        return UserResponse.from(eligibilityService.setEligibility(userId, request.eligible(), request.reason()));
+    public UserResponse setEligibility(@PathVariable String studentRef, @Valid @RequestBody FlagRequest request) {
+        return UserResponse.from(eligibilityService.setEligibility(studentRef, request.eligible(), request.reason()));
     }
 
     @Operation(summary = "List students marked not eligible")

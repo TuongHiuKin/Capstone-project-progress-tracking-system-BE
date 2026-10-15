@@ -1,6 +1,7 @@
 package com.capstone.tracking.group;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.capstone.tracking.group.dto.AddMemberRequest;
 import com.capstone.tracking.group.dto.GroupMemberResponse;
 import com.capstone.tracking.group.dto.StudentGroupCreateRequest;
@@ -52,6 +53,7 @@ public class StudentGroupController {
 
     /** A student creates a group and becomes its Leader (YC07); an Admin may provision one with topic/supervisor. */
     @Operation(summary = "Create a group (the creator becomes Leader)")
+    @ApiResponse(responseCode = "201", description = "Created")
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','STUDENT','GROUP_LEADER')")
     public ResponseEntity<StudentGroupResponse> create(@Valid @RequestBody StudentGroupCreateRequest request,
@@ -120,9 +122,10 @@ public class StudentGroupController {
                 .toList();
     }
 
-    @Operation(summary = "Add a member to a group")
+    @Operation(summary = "Admin adds a member to a group (Leaders invite instead, YC11)")
+    @ApiResponse(responseCode = "201", description = "Created")
     @PostMapping("/{id}/members")
-    @PreAuthorize("hasAnyRole('ADMIN','GROUP_LEADER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<GroupMemberResponse> addMember(@PathVariable UUID id,
                                                          @Valid @RequestBody AddMemberRequest request,
                                                          @AuthenticationPrincipal User currentUser) {
@@ -169,14 +172,14 @@ public class StudentGroupController {
     }
 
     /** YC16: the Leader sends the member list to the supervisor (or to the Admins while none is assigned). */
-    @Operation(summary = "Leader submits the roster to the supervisor")
+    @Operation(summary = "Leader submits the roster (3-5 members) for approval by the supervisor or an Admin")
     @PostMapping("/{id}/roster/submit")
     @PreAuthorize("hasAnyRole('ADMIN','GROUP_LEADER','STUDENT')")
     public StudentGroupResponse submitRoster(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
         return respond(studentGroupService.submitRoster(id, currentUser));
     }
 
-    @Operation(summary = "Supervisor approves or rejects the roster")
+    @Operation(summary = "Supervisor or Admin approves or rejects the roster (a rejection needs a note)")
     @PostMapping("/{id}/roster/review")
     @PreAuthorize("hasAnyRole('INSTRUCTOR','ADMIN')")
     public StudentGroupResponse reviewRoster(@PathVariable UUID id, @Valid @RequestBody RosterReviewRequest request,
