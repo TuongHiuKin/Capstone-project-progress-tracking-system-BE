@@ -2,6 +2,7 @@ package com.capstone.tracking.eligibility;
 
 import com.capstone.tracking.common.exception.ApiException;
 import com.capstone.tracking.common.exception.BadRequestException;
+import com.capstone.tracking.common.exception.ResourceNotFoundException;
 import com.capstone.tracking.group.GroupJoinRequestRepository;
 import com.capstone.tracking.notification.DomainEvent;
 import com.capstone.tracking.notification.DomainEventType;
@@ -179,6 +180,26 @@ public class EligibilityService {
             students.add(ImportedStudent.of(user, action));
         }
         return new ImportResult(created, updated, flagged, cleared, invalid, students);
+    }
+
+    /** Flag or un-flag a single student found by MSSV (case-insensitive) or, failing that, by account UUID. */
+    @Transactional
+    public User setEligibility(String studentRef, boolean eligible, String reason) {
+        String ref = studentRef == null ? "" : studentRef.trim();
+        if (ref.isEmpty()) {
+            throw new BadRequestException("Student code (MSSV) is required");
+        }
+        User byCode = userRepository.findByStudentCodeIgnoreCase(ref).orElse(null);
+        if (byCode != null) {
+            return setEligibility(byCode.getId(), eligible, reason);
+        }
+        UUID id;
+        try {
+            id = UUID.fromString(ref);
+        } catch (IllegalArgumentException e) {
+            throw new ResourceNotFoundException("No student with code " + ref);
+        }
+        return setEligibility(id, eligible, reason);
     }
 
     /** Flag (eligible=false, with a reason) or un-flag a single student. */

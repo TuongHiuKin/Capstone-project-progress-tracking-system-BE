@@ -86,6 +86,22 @@ class GroupLeaderReportedIssuesIntegrationTest extends WorkflowTestSupport {
     }
 
     @Test
+    @DisplayName("Admin updates eligibility by MSSV instead of user UUID")
+    void adminFlagsByStudentCode() throws Exception {
+        User admin = user("e-admin", Role.ADMIN);
+        String code = "SE9" + suffix.toUpperCase();
+        User s = studentWithCode("e-s", code);
+        mockMvc.perform(put("/api/v1/eligibility/" + code.toLowerCase()).header("Authorization", bearer(admin))
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of("eligible", false, "reason", "No hoc phi"))))
+                .andExpect(status().isOk());
+        assertThat(userRepository.findById(s.getId()).orElseThrow().isEligible()).isFalse();
+        mockMvc.perform(put("/api/v1/eligibility/SE-NOPE-" + suffix).header("Authorization", bearer(admin))
+                        .contentType("application/json").content("{\"eligible\":true}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     @DisplayName("#2 Reject reason is stored and forwarded to the applicant")
     void rejectReasonReachesTheStudent() throws Exception {
         User leader = user("r-leader", Role.STUDENT);
